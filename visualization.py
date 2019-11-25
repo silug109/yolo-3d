@@ -41,29 +41,29 @@ def visualise_bird_view(frame ,targets, boxes, do_nms = False, do_photo = False,
     axs[0].set_title('target boxes')
     axs[1].set_title('predicted boxes')
 
-    for num_target in range(targets.shape[1]):
-        x = targets[0 ,num_target ,2]
-        y = targets[0 ,num_target ,1]
-        w = targets[0 ,num_target ,4]
-        h = targets[0 ,num_target ,3]
-        x_t = x- w / 2
-        x_b = x + w / 2
-        y_t = y - h / 2
-        y_b = y + h / 2
-        rect = patches.Rectangle((x_t, y_t), w, h, linewidth=1, edgecolor='r', facecolor='none')
+    for num_target in range(targets.shape[0]):
+        x = targets[num_target ,1]
+        y = targets[num_target ,2]
+        h = targets[num_target ,4]
+        w = targets[num_target ,5]
+        x_t = x- h / 2
+        x_b = x + h / 2
+        y_t = y - w / 2
+        y_b = y + w / 2
+        rect = patches.Rectangle((y_t, x_t), w, h, linewidth=1, edgecolor='r', facecolor='none')
         axs[0].add_patch(rect)
 
     for box in boxes:
-        x = box[1]
-        y = box[0]
-        w = box[3]
-        h = box[2]
-        x_t = x - w / 2
-        x_b = x + w / 2
-        y_t = y - h / 2
-        y_b = y + h / 2
-        class_box = box[5]
-        rect = patches.Rectangle((x_t, y_t), w, h, linewidth=1, edgecolor= color_dict[class_box], facecolor='none')
+        x = box[0]
+        y = box[1]
+        h = box[3]
+        w = box[4]
+        x_t = x - h / 2
+        x_b = x + h / 2
+        y_t = y - w / 2
+        y_b = y + w / 2
+        class_box = box[7]
+        rect = patches.Rectangle((y_t, x_t), w, h, linewidth=1, edgecolor= color_dict[class_box], facecolor='none')
         axs[1].add_patch(rect)
 
     if do_photo:
@@ -167,6 +167,7 @@ def line_creation(R, visualize = False):
     return line_set
 
 
+#rewrite for new data
 def custom_draw_geometry_with_key_callback(matr):
     global counter
     counter = 0

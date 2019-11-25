@@ -12,7 +12,7 @@ num_boxes = len(anchors_list)
 
 
 ALPHA = 0.1
-N_DIM = 2
+N_DIM = 3
 
 
 IMAGE_H, IMAGE_W, IMAGE_D = (1024,256,80)
@@ -21,14 +21,16 @@ striding = int(2)
 max_grid_h, max_grid_w, max_grid_d = (16, 16, 16)
 
 
-ignore_thresh = 0.4
+ignore_thresh = 0.5
 grid_scale = 1
 obj_scale = 5
 noobj_scale = 30
 xywh_scale = 1
 class_scale = 1
 obj_thresh = 0.6
-iou_thresh = 0.6
+iou_thresh = 0.5
+
+data_directory = './data_not_raw'
 
 
 

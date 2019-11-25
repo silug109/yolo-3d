@@ -35,6 +35,47 @@ def get_model():
     return model
 
 
+def get_model_2():
+    '''
+    :return: возвращает арзитектуру сети для Yolo
+    '''
+    input_image = layers.Input(shape=(IMAGE_H/striding ,IMAGE_W/striding ,IMAGE_D/striding ,1))
+    x = layers.Conv3D(filters = 16 ,kernel_size=(5 ,5 ,5) ,strides = (1 ,1 ,1) ,padding = 'same', name = 'conv_0_1') \
+        (input_image)
+    x = layers.Conv3D(filters = 16 ,kernel_size=(5 ,5 ,5) ,strides = (1 ,1 ,1) ,padding = 'same', name = 'conv_0_2') \
+        (x)
+    x = layers.BatchNormalization(name='norm_0_1')(x)
+    x = layers.advanced_activations.LeakyReLU(alpha=ALPHA)(x)
+    x = layers.MaxPool3D(pool_size=(2 ,2 ,1))(x)
+
+    x = layers.Conv3D(filters = 32 ,kernel_size=(5 ,5 ,5) ,strides = (1 ,1 ,1) ,padding = 'same' ,name = 'conv_1_1')(x)
+    x = layers.Conv3D(filters = 32 ,kernel_size=(5 ,5 ,5) ,strides = (1 ,1 ,1) ,padding = 'same' ,name = 'conv_1_2')(x)
+    x = layers.BatchNormalization(name='norm_1_1')(x)
+    x = layers.advanced_activations.LeakyReLU(alpha=ALPHA)(x)
+    x = layers.MaxPool3D(pool_size=(4 ,4 ,4))(x)
+
+    x = layers.Conv3D(filters = 32 ,kernel_size=(5 ,5 ,5) ,strides = (1 ,1 ,1) ,padding = 'same', name = 'conv_2_1')(x)
+    x = layers.Conv3D(filters = 32 ,kernel_size=(5 ,5 ,5) ,strides = (1 ,1 ,1) ,padding = 'same', name = 'conv_2_2')(x)
+    x = layers.BatchNormalization(name='norm_5_1')(x)
+    x = layers.advanced_activations.LeakyReLU(alpha=ALPHA)(x)
+    x = layers.MaxPool3D(pool_size=(4 ,2 ,2))(x)
+
+    x = layers.Conv3D(filters= 32, kernel_size=(1 ,1 ,1), strides =(1 ,1 ,1), padding = 'same', name= 'pred_yolo')(x)
+    x = layers.Conv3D(filters= (2*N_DIM+1+num_classes )*num_boxes, kernel_size=(1 ,1 ,1), strides =(1 ,1 ,1), padding = 'same', name= 'yolo')(x)
+    output = layers.Reshape((GRID_H ,GRID_W ,GRID_D ,num_boxes, 2*N_DIM + 1 + num_classes))(x)
+    model = models.Model(input_image, output)
+    return model
+
+def load_model_2(load_weights = False):
+    model = get_model_2()
+    mypotim = Adam(lr=0.0001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0)
+
+    model_loss_bend = model_loss()
+
+    model.compile(loss=model_loss_bend, optimizer=mypotim)
+
+    return model
+
 
 def load_model(load_weights = False):
     model = get_model()
@@ -57,8 +98,10 @@ def loss(y_true, y_pred, anchors= anchors_list):
     # max_grid_h, max_grid_w , max_grid_d = (16,16,16)
 
     anchors = tf.cast(anchors, dtype = tf.float32)
-    anchors = tf.reshape(anchors, shape= [1,1,1,anchors.shape[0],3])
+    anchors = tf.reshape(anchors, shape= [1,1,1,anchors.shape[0],3])  # преобразуем разметочные боксы к виду (1,1,1,len(anchors),3)
 
+    # генерируем сетку для добавления к локальным координатам предсказания(они нормированы по остатку и на размер ячейки),
+    # поэтому надо добавлять к ним сетку целых частей сетки. cell_grid(i,j,k) = i+j+k
     cell_x = tf.cast(tf.reshape(tf.tile(tf.range(max_grid_d), [max_grid_h*max_grid_w]), (max_grid_h, max_grid_w, max_grid_d, 1, 1)),dtype= tf.float32)
     cell_y = tf.transpose(cell_x, (1,2,0,3,4))
     cell_z = tf.transpose(cell_x, (2,0,1,3,4))
@@ -66,11 +109,11 @@ def loss(y_true, y_pred, anchors= anchors_list):
 
     input_image = tf.cast(np.zeros((IMAGE_H//striding,IMAGE_W//striding,IMAGE_D//striding)), tf.int32)
 
-    y_true = K.reshape(y_true, tf.shape(y_true[0,...]))
+    y_true = K.reshape(y_true, tf.shape(y_true[0,...])) # squeeze this matrix
 
-    y_pred = tf.reshape(y_pred, tf.shape(y_pred)[1:])
+    y_pred = tf.reshape(y_pred, tf.shape(y_pred)[1:]) #squeeze another way this matrix
 
-    object_mask     = tf.expand_dims(y_true[..., 4], 4)
+    object_mask     = tf.expand_dims(y_true[..., 4], 4) #unsqueeze this matrix
 
     grid_h      = tf.shape(y_true)[0]
     grid_w      = tf.shape(y_true)[1]
@@ -152,33 +195,43 @@ def loss(y_true, y_pred, anchors= anchors_list):
 
     true_box_xy, true_box_wh, xywh_mask = [true_box_xy, true_box_wh, object_mask]
 
-    wh_scale = tf.exp(true_box_wh) * anchors[...,:N_DIM]/net_factor[...,:N_DIM]
+    wh_scale = tf.exp(true_box_wh) * anchors[...,:N_DIM]/net_factor[...,:N_DIM] # ????????
+    # wh_scale = tf.abs(true_box_wh)
     wh_scale = tf.expand_dims(2 - wh_scale[..., 0] * wh_scale[..., 1], axis=4) # N_DIM == 3 crash
 
-    xy_delta    = xywh_mask   * (pred_box_xy-true_box_xy) * wh_scale * xywh_scale
+    xy_delta    = xywh_mask   * (pred_box_xy-true_box_xy) *wh_scale * xywh_scale
     wh_delta    = xywh_mask   * (pred_box_wh-true_box_wh) * wh_scale * xywh_scale
-    conf_delta  = object_mask * (pred_box_conf-true_box_conf) * obj_scale + (1-object_mask) * conf_delta * noobj_scale
+    # wh_delta    = xywh_mask   * (pred_wh - true_wh) * xywh_scale
+    conf_delta  = xywh_mask * (pred_box_conf-true_box_conf) * obj_scale + (1-xywh_mask) * conf_delta * noobj_scale
     class_delta = object_mask * tf.expand_dims(tf.keras.backend.sparse_categorical_crossentropy(true_box_class, pred_box_class),4)* class_scale
 
 
-    loss_xy    = tf.reduce_sum(tf.square(xy_delta),       list(range(0,5)))
-    loss_wh    = tf.reduce_sum(tf.square(wh_delta),       list(range(0,5)))
-    loss_conf  = tf.reduce_sum(tf.square(conf_delta),     list(range(0,5)))
-    loss_class = tf.reduce_sum(class_delta,               list(range(0,5)))
+    # loss_xy    = tf.reduce_sum(tf.square(xy_delta),       list(range(0,5)))
+    # loss_wh    = tf.reduce_sum(tf.square(wh_delta),       list(range(0,5)))
+    # loss_conf  = tf.reduce_sum(tf.square(conf_delta),     list(range(0,5)))
+    # loss_class = tf.reduce_sum(class_delta,               list(range(0,5)))
+    loss_xy = tf.reduce_sum(tf.square(xy_delta))
+    loss_wh = tf.reduce_sum(tf.square(wh_delta))
+    loss_conf = tf.reduce_sum(tf.square(conf_delta))
+    loss_class = tf.reduce_sum(class_delta)
     loss = loss_xy+ loss_wh + loss_conf + loss_class
 
-    loss = tf.Print(loss, [grid_h, avg_obj], message='avg_obj \t\t', summarize=1000)
-    loss = tf.Print(loss, [grid_h, avg_noobj], message='avg_noobj \t\t', summarize=1000)
-    loss = tf.Print(loss, [grid_h, avg_iou], message='avg_iou \t\t', summarize=1000)
-    loss = tf.Print(loss, [grid_h, avg_cat], message='avg_cat \t\t', summarize=1000)
-    loss = tf.Print(loss, [grid_h, recall50], message='recall50 \t', summarize=1000)
-    loss = tf.Print(loss, [grid_h, recall75], message='recall75 \t', summarize=1000)
-    loss = tf.Print(loss, [grid_h, count], message='count \t', summarize=1000)
-    loss = tf.Print(loss, [grid_h, tf.reduce_sum(loss_xy),
+    loss = tf.Print(loss, [ avg_obj], message='avg_obj \t\t', summarize=1000)
+    loss = tf.Print(loss, [ avg_noobj], message='avg_noobj \t\t', summarize=1000)
+    loss = tf.Print(loss, [ avg_iou], message='avg_iou \t\t', summarize=1000)
+    loss = tf.Print(loss, [ avg_cat], message='avg_cat \t\t', summarize=1000)
+    loss = tf.Print(loss, [ recall50], message='recall50 \t', summarize=1000)
+    loss = tf.Print(loss, [ recall75], message='recall75 \t', summarize=1000)
+    loss = tf.Print(loss, [ count], message='count \t', summarize=1000)
+    loss = tf.Print(loss, [ tf.reduce_sum(loss_xy),
                                    tf.reduce_sum(loss_wh),
                                    tf.reduce_sum(loss_conf),
                                    tf.reduce_sum(loss_class)],  message='loss xy, wh, conf, class: \t',   summarize=1000)
+    loss = tf.Print(loss, [ tf.reduce_mean(wh_scale)], message='wh_scale')
+
     return loss*grid_scale
+
+
 
 
 def model_loss():
