@@ -66,27 +66,51 @@ def get_model_2():
     model = models.Model(input_image, output)
     return model
 
-def load_model_2(load_weights = False):
+def load_model_2(load_weights = False, weights_path = None):
     model = get_model_2()
     mypotim = Adam(lr=0.0001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0)
-
     model_loss_bend = model_loss()
-
-    model.compile(loss=model_loss_bend, optimizer=mypotim)
-
-    return model
-
-
-def load_model(load_weights = False):
-    model = get_model()
-    mypotim = Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0)
-
-    model_loss_bend = model_loss()
-
     model.compile(loss=model_loss_bend, optimizer=mypotim)
 
     if load_weights:
-        model.load_weights('warehouse/03.10.19_good_model/weights_good_loader.h5')
+    '''
+            Загружаю и компилирую модель сети 
+            :param load_weights: Bool загружать или нет веса сети 
+            :param weights_path: Указание на файл с весами.
+            :return: 
+            # to-do указание функции из которой берется структура сети
+            '''
+        if weights_path:
+            try:
+                model.load_weights('warehouse/03.10.19_good_model/weights_good_loader.h5')
+            except OSError:
+                print("Not found weights in path {0}, check this out".format(weights_path))
+        else:
+            print("Error, it is necessary to point path")
+    return model
+
+
+def load_model(load_weights = False, weights_path = None):
+    '''
+    Загружаю и компилирую модель сети
+    :param load_weights: Bool загружать или нет веса сети
+    :param weights_path: Указание на файл с весами.
+    :return:
+    # to-do указание функции из которой берется структура сети
+    '''
+    model = get_model()
+    mypotim = Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0)
+    model_loss_bend = model_loss()
+    model.compile(loss=model_loss_bend, optimizer=mypotim)
+
+    if load_weights:
+        if weights_path:
+            try:
+                model.load_weights('warehouse/03.10.19_good_model/weights_good_loader.h5')
+            except OSError:
+                print("Not found weights in path {0}, check this out".format(weights_path))
+        else:
+            print("Error, it is necessary to point path")
     return model
 
 
@@ -108,28 +132,18 @@ def loss(y_true, y_pred, anchors= anchors_list):
     cell_grid = tf.tile(tf.concat([cell_z,cell_y,cell_x], -1), [1,1,1,anchors.shape[3],1])
 
     input_image = tf.cast(np.zeros((IMAGE_H//striding,IMAGE_W//striding,IMAGE_D//striding)), tf.int32)
-
     y_true = K.reshape(y_true, tf.shape(y_true[0,...])) # squeeze this matrix
-
     y_pred = tf.reshape(y_pred, tf.shape(y_pred)[1:]) #squeeze another way this matrix
-
     object_mask     = tf.expand_dims(y_true[..., 4], 4) #unsqueeze this matrix
 
     grid_h      = tf.shape(y_true)[0]
     grid_w      = tf.shape(y_true)[1]
     grid_d      = tf.shape(y_true)[2]
-    # grid_h = GRID_H
-    # grid_w = GRID_W
-    # grid_d = GRID_D
-
     grid_factor = tf.reshape(tf.cast([grid_h, grid_w, grid_d], tf.float32), [1,1,1,1,3])
 
     net_h       = tf.shape(input_image)[0]
     net_w       = tf.shape(input_image)[1]
     net_d       = tf.shape(input_image)[2]
-    # net_h = IMAGE_H
-    # net_w = IMAGE_W
-    # net_d = IMAGE_D
     net_factor  = tf.reshape(tf.cast([net_h, net_w, net_d], tf.float32), [1,1,1,1,3])
 
 
@@ -147,7 +161,6 @@ def loss(y_true, y_pred, anchors= anchors_list):
     true_box_class = tf.argmax(y_true[...,N_DIM*2+1:],axis= -1)
 
     conf_delta  = pred_box_conf - 0
-
     true_xy = (true_box_xy + cell_grid[:grid_h,:grid_w,:grid_d,:,:N_DIM]) * (net_factor[...,:N_DIM]/grid_factor[...,:N_DIM])
     true_wh = tf.exp(true_box_wh) * anchors[...,:N_DIM]
 
@@ -246,26 +259,17 @@ def new_loss(y_true, y_pred, anchors= anchors_list):
     input_image = tf.cast(np.zeros((IMAGE_H//striding,IMAGE_W//striding,IMAGE_D//striding)), tf.int32)
 
     y_true = K.reshape(y_true, tf.shape(y_true[0,...])) # squeeze this matrix
-
     y_pred = tf.reshape(y_pred, tf.shape(y_pred)[1:]) #squeeze another way this matrix
-
     object_mask     = tf.expand_dims(y_true[..., 4], 4) #unsqueeze this matrix
 
-    # grid_h      = tf.shape(y_true)[0]
-    # grid_w      = tf.shape(y_true)[1]
-    # grid_d      = tf.shape(y_true)[2]
-    grid_h = GRID_H
-    grid_w = GRID_W
-    grid_d = GRID_D
-
+    grid_h      = tf.shape(y_true)[0]
+    grid_w      = tf.shape(y_true)[1]
+    grid_d      = tf.shape(y_true)[2]
     grid_factor = tf.reshape(tf.cast([grid_h, grid_w, grid_d], tf.float32), [1,1,1,1,3])
 
-    # net_h       = tf.shape(input_image)[0]
-    # net_w       = tf.shape(input_image)[1]
-    # net_d       = tf.shape(input_image)[2]
-    net_h = IMAGE_H//striding
-    net_w = IMAGE_W//striding
-    net_d = IMAGE_D//striding
+    net_h       = tf.shape(input_image)[0]
+    net_w       = tf.shape(input_image)[1]
+    net_d       = tf.shape(input_image)[2]
     net_factor  = tf.reshape(tf.cast([net_h, net_w, net_d], tf.float32), [1,1,1,1,3])
 
     pred_box_xy    = tf.sigmoid(y_pred[..., :N_DIM])
@@ -302,7 +306,6 @@ def new_loss(y_true, y_pred, anchors= anchors_list):
         true_areas = true_wh[..., 0] * true_wh[..., 1]* true_wh[...,2]
         pred_areas = pred_wh[..., 0] * pred_wh[..., 1] * pred_wh[...,2]
     else:
-        # если N_DIM == 3: intersect_wh[..., 0] * intersect_wh[..., 1]* intersect[...,3]
         intersect_areas = intersect_wh[..., 0] * intersect_wh[..., 1]
         true_areas = true_wh[..., 0] * true_wh[..., 1]
         pred_areas = pred_wh[..., 0] * pred_wh[..., 1]
