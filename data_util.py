@@ -351,7 +351,7 @@ def decode_netout(netout, obj_thresh=obj_thresh, anchors=anchors_list):
     original_input_shape = (IMAGE_H // striding, IMAGE_W // striding, IMAGE_D // striding)
     grid_h, grid_w, grid_d = netout.shape[1:4]
 
-    netout = netout.reshape((GRID_H, GRID_W, GRID_D, num_boxes, -1))
+    netout = np.array(netout.reshape((GRID_H, GRID_W, GRID_D, num_boxes, -1)))
     nb_class = netout.shape[-1] - 5
     boxes = []
 
@@ -447,7 +447,7 @@ def do_nms_exp(boxes, nms_thresh=0.5):
     boxes = list(boxes)
     if len(boxes) == 0:
         return
-    sorted_indices = np.argsort([-box[4] for box in boxes])
+    sorted_indices = np.argsort([-box[2*N_DIM] for box in boxes])
     for i in range(len(sorted_indices)):
         index_i = sorted_indices[i]
         for j in range(i + 1, len(sorted_indices)):
@@ -455,19 +455,21 @@ def do_nms_exp(boxes, nms_thresh=0.5):
             if boxes[index_j][0] == 0: continue
 
             if bbox_iou_exp(boxes[index_i], boxes[index_j]) >= nms_thresh:
-                boxes[index_j] = [0, 0, 0, 0, 0]
+                boxes[index_j] = [0, 0, 0, 0, 0, 0, 0]
     return [box for box in boxes if box[0] != 0]
 
 
 def bbox_iou_exp(box1, box2):
-    intersect_w = _interval_overlap([box1[0] - box1[2] / 2, box1[0] + box1[2] / 2],
-                                    [box2[0] - box2[2] / 2, box2[0] + box2[2] / 2])
-    intersect_h = _interval_overlap([box1[1] - box1[3] / 2, box1[1] + box1[3] / 2],
-                                    [box2[1] - box2[3] / 2, box2[1] + box2[3] / 2])
-    intersect = intersect_w * intersect_h
-    w1, h1 = box1[2], box1[3]
-    w2, h2 = box2[2], box2[3]
-    union = w1 * h1 + w2 * h2 - intersect
+    intersect_h = _interval_overlap([box1[0] - box1[N_DIM] / 2, box1[0] + box1[N_DIM] / 2],
+                                    [box2[0] - box2[N_DIM] / 2, box2[0] + box2[N_DIM] / 2])
+    intersect_w = _interval_overlap([box1[1] - box1[1+N_DIM] / 2, box1[1] + box1[1+N_DIM] / 2],
+                                    [box2[1] - box2[1+N_DIM] / 2, box2[1] + box2[1+N_DIM] / 2])
+    intersect_d = _interval_overlap([box1[2] - box1[2 + N_DIM] / 2, box1[2] + box1[2 + N_DIM] / 2],
+                                    [box2[2] - box2[2 + N_DIM] / 2, box2[2] + box2[2 + N_DIM] / 2])
+    intersect = intersect_h * intersect_w * intersect_d
+    h1, w1, d1  = box1[N_DIM], box1[1+N_DIM] , box1[2+N_DIM]
+    h2, w2, d2 = box2[N_DIM], box2[1+ N_DIM], box2[2+N_DIM]
+    union = w1 * h1 * d1 + w2 * h2 * d2 - intersect
     return float(intersect) / union
 
 

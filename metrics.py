@@ -249,6 +249,8 @@ def metrics_numpy_new(model, directory = None, anchors=anchors_list):
     avg_obj_whole = 0
     avg_noobj_whole = 0
     avg_cat_whole = 0
+    recall50_obj_whole = 0
+    recall75_obj_whole = 0
     true_counter = 0
     conf_change_whole = 0
 
@@ -269,11 +271,8 @@ def metrics_numpy_new(model, directory = None, anchors=anchors_list):
         y_true = y_true[0]
         y_pred = y_pred[0]
 
-        object_mask = np.expand_dims(y_true[..., 4], 4)
+        object_mask = np.expand_dims(y_true[..., 2 * N_DIM], 4)
 
-        # grid_h = y_true.shape[0]
-        # grid_w = y_true.shape[1]
-        # grid_d = y_true.shape[2]
         grid_h, grid_w, grid_d = GRID_H, GRID_W, GRID_D
         grid_factor = np.reshape([grid_h, grid_w, grid_d], (1, 1, 1, 1, 3))
 
@@ -283,16 +282,15 @@ def metrics_numpy_new(model, directory = None, anchors=anchors_list):
         net_factor = np.reshape([net_h, net_w, net_d], (1, 1, 1, 1, 3))
 
         pred_box_xy = sigmoid(y_pred[..., :N_DIM])
-        pred_box_wh = y_pred[..., N_DIM:2*N_DIM]
-        pred_box_conf = np.expand_dims(sigmoid(y_pred[..., 2*N_DIM]), 4)
-        pred_box_class = np.exp(y_pred[..., 2*N_DIM+1:]) / np.expand_dims(np.sum(np.exp(y_pred[..., 2*N_DIM+1:]), axis=-1), -1)
+        pred_box_wh = y_pred[..., N_DIM:2 * N_DIM]
+        pred_box_conf = np.expand_dims(sigmoid(y_pred[..., 2 * N_DIM]), 4)
+        pred_box_class = np.exp(y_pred[..., 2 * N_DIM + 1:]) / np.expand_dims(
+            np.sum(np.exp(y_pred[..., 2 * N_DIM + 1:]), axis=-1), -1)
 
         true_box_xy = y_true[..., 0:N_DIM]
-        true_box_wh = y_true[..., N_DIM:2*N_DIM]
-        true_box_conf = y_true[..., 2*N_DIM]
-        true_box_class = np.argmax(y_true[..., 1+2*N_DIM:], axis=-1)
-
-        conf_delta = np.array(pred_box_conf)
+        true_box_wh = y_true[..., N_DIM:2 * N_DIM]
+        true_box_conf = np.expand_dims(y_true[..., 2 * N_DIM], axis=-1)
+        true_box_class = np.argmax(y_true[..., 1 + 2 * N_DIM:], axis=-1)
 
         true_xy = (true_box_xy + cell_grid[:grid_h, :grid_w, :grid_d, :, :N_DIM]) * (
                 net_factor[..., :N_DIM] / grid_factor[..., :N_DIM])
@@ -313,19 +311,13 @@ def metrics_numpy_new(model, directory = None, anchors=anchors_list):
         intersect_mins = np.maximum(pred_mins, true_mins)
         intersect_maxes = np.minimum(pred_maxes, true_maxes)
         intersect_wh = np.maximum(intersect_maxes - intersect_mins, 0.)
-        # intersect_areas = intersect_wh[..., 0] * intersect_wh[..., 1]
-        intersect_areas = intersect_wh[..., 0] * intersect_wh[..., 1]* intersect_wh[...,2]
-
-        # true_areas = true_wh[..., 0] * true_wh[..., 1]
-        # pred_areas = pred_wh[..., 0] * pred_wh[..., 1]
-        true_areas = true_wh[..., 0] * true_wh[..., 1]* true_wh[...,2]
-        pred_areas = pred_wh[..., 0] * pred_wh[..., 1]* pred_wh[...,2]
+        intersect_areas = intersect_wh[..., 0] * intersect_wh[..., 1] * intersect_wh[..., 2]
+        true_areas = true_wh[..., 0] * true_wh[..., 1] * true_wh[..., 2]
+        pred_areas = pred_wh[..., 0] * pred_wh[..., 1] * pred_wh[..., 2]
 
         union_areas = pred_areas + true_areas - intersect_areas
         iou_scores = intersect_areas / union_areas
         iou_scores = object_mask * np.expand_dims(iou_scores, 4)
-
-        conf_delta *= np.array(iou_scores < iou_thresh, dtype=np.float)
 
         count = np.sum(object_mask)
         count_noobj = np.sum(1 - object_mask)
@@ -334,15 +326,19 @@ def metrics_numpy_new(model, directory = None, anchors=anchors_list):
         class_mask = np.expand_dims((np.argmax(pred_box_class, -1) == true_box_class).astype(np.float), 4)
         recall50 = np.sum((iou_scores >= 0.5) * detect_mask * class_mask) / (count + 1e-3)
         recall75 = np.sum((iou_scores >= 0.75).astype(np.float) * detect_mask * class_mask) / (count + 1e-3)
+        recall50_obj = np.sum((iou_scores >= 0.5) * detect_mask) / (count + 1e-3)
+        recall75_obj = np.sum((iou_scores >= 0.75).astype(np.float) * detect_mask) / (count + 1e-3)
+
         avg_iou = np.sum(iou_scores) / (count + 1e-3)
         avg_obj = np.sum(pred_box_conf * object_mask) / (count + 1e-3)
         avg_noobj = np.sum(pred_box_conf * (1 - object_mask)) / (count_noobj + 1e-3)
         avg_cat = np.sum(object_mask * class_mask) / (count + 1e-3)
-        #         print(count, count_noobj, recall50, recall75)
 
         avg_iou_whole += avg_iou
         recall50_whole += recall50
         recall75_whole += recall75
+        recall50_obj_whole += recall50_obj
+        recall75_obj_whole += recall75_obj
         avg_obj_whole += avg_obj
         avg_noobj_whole += avg_noobj
         avg_cat_whole += avg_cat
@@ -352,6 +348,8 @@ def metrics_numpy_new(model, directory = None, anchors=anchors_list):
     print('avg_iou {0}'.format(avg_iou_whole / true_counter))
     print('recall50 {0}'.format(recall50_whole / true_counter))
     print('recall75 {0}'.format(recall75_whole / true_counter))
+    print('recall50_obj {0}'.format(recall50_obj_whole / true_counter))
+    print('recall75_obj {0}'.format(recall75_obj_whole / true_counter))
     print('avg_obj {0}'.format(avg_obj_whole / true_counter))
     print('avg_noobj {0}'.format(avg_noobj_whole / true_counter))
     print('avg_cat {0}'.format(avg_cat_whole / true_counter))
@@ -359,8 +357,7 @@ def metrics_numpy_new(model, directory = None, anchors=anchors_list):
 
 
 
-
-def metrics_numpy_targets_new(model, directory=directory_val, anchors=anchors_list, verbose = 0):
+def metrics_numpy_targets_new(model, directory_list, anchors=anchors_list, verbose = 0):
 
     anchors = np.array(anchors, dtype=np.float32)
     anchors = np.reshape(anchors, newshape=(1, 1, 1, anchors.shape[0], 3))
@@ -371,11 +368,10 @@ def metrics_numpy_targets_new(model, directory=directory_val, anchors=anchors_li
     true_counter = 0
     prediction_counter = 0
 
-    print('searching in directory{}'.format(directory))
+    print('searching in directory{}'.format(directory_list[0]))
 
-    full_dir_list  = create_full_dir_list(directory)
-
-    for file in full_dir_list['pathname_base']:
+    # full_dir_list  = create_full_dir_list(directory)
+    for file in directory_list:
 
         frame, labels, _ = process_oneframe(file)
 
@@ -383,7 +379,7 @@ def metrics_numpy_targets_new(model, directory=directory_val, anchors=anchors_li
 
         predicted_boxes = decode_netout(y_pred, obj_thresh= obj_thresh)
 
-        if (len(predicted_boxes) != 0) and (labels.shape[0] != 0):
+        if (len(predicted_boxes) != 0) and (len(labels) != 0):
 
             if verbose == 1:
                 print('before NMS:', len(predicted_boxes))
@@ -396,7 +392,7 @@ def metrics_numpy_targets_new(model, directory=directory_val, anchors=anchors_li
             matric_iou = np.zeros((len(predicted_boxes), len(labels)))
 
             for i in range(len(predicted_boxes)):
-                box_1 = predicted_boxes[i][0:4]
+                box_1 = predicted_boxes[i][0:2*N_DIM]
                 for j in range(len(labels)):
                     box_2 = labels[j][1:]
                     matric_iou[i, j] = bbox_iou_exp(box_1, box_2)

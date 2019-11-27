@@ -6,7 +6,8 @@ color_dict = {0: 'r', 1: 'g', 2:'b', 3:'y' , 4:'c' }
 labels_model= ['auto','people','tree','beton','sign']
 num_classes = len(labels_model)
 
-anchors_list = [[40,120,40],[35,60,40],[205,110,40], [40,100,40], [50,150,40],[75,110,40]] #new new ones
+# anchors_list = [[40,120,40],[35,60,40],[205,110,40], [40,100,40], [50,150,40],[75,110,40]] #new new ones
+anchors_list = [[40,20,20],[40,40,20],[40,60,20], [40,100,20], [120,80,20],[200,120,20]]
 num_boxes = len(anchors_list)
 
 
